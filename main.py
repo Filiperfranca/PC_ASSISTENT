@@ -7,6 +7,7 @@ from app.core.logger import logger
 from app.core.state_manager import StateManager
 from app.core.states import State
 from app.services.camera_service import CameraService
+from app.services.detection_service import DetectionService
 
 
 running = True
@@ -27,9 +28,12 @@ def main():
 
     event_bus = EventBus()
     state_manager = StateManager(event_bus)
+
     camera_service = CameraService(event_bus)
+    detection_service = DetectionService(event_bus)
 
     frame_counter = {"count": 0}
+    face_counter = {"detected_events": 0, "lost_events": 0}
 
     def on_state_changed(payload):
         logger.info(
@@ -49,14 +53,34 @@ def main():
         if frame_counter["count"] % 30 == 0:
             logger.info(f"Frames capturados até agora: {frame_counter['count']}")
 
+    def on_face_detected(payload):
+        face_counter["detected_events"] += 1
+
+        if face_counter["detected_events"] % 10 == 0:
+            logger.info(
+                f"FACE_DETECTED recebido. "
+                f"Total: {face_counter['detected_events']} | "
+                f"Rostos: {payload['faces_count']} | "
+                f"Principal: {payload['main_face']}"
+            )
+
+    def on_face_lost(payload):
+        face_counter["lost_events"] += 1
+
+        if face_counter["lost_events"] % 10 == 0:
+            logger.info(f"FACE_LOST recebido. Total: {face_counter['lost_events']}")
+
     event_bus.subscribe(Event.STATE_CHANGED, on_state_changed)
     event_bus.subscribe(Event.CAMERA_STARTED, on_camera_started)
     event_bus.subscribe(Event.CAMERA_ERROR, on_camera_error)
     event_bus.subscribe(Event.FRAME_CAPTURED, on_frame_captured)
+    event_bus.subscribe(Event.FACE_DETECTED, on_face_detected)
+    event_bus.subscribe(Event.FACE_LOST, on_face_lost)
 
     event_bus.emit(Event.SYSTEM_BOOT, {"message": "Sistema inicializado"})
     state_manager.set_state(State.READY, reason="Core inicializado com sucesso")
 
+    detection_service.start()
     camera_service.start()
 
     logger.info("PresenceAgent rodando. Pressione CTRL+C para encerrar.")

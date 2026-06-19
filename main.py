@@ -12,6 +12,7 @@ from app.services.detection_service import DetectionService
 from app.services.presence_service import PresenceService
 from app.services.system_service import SystemService
 from app.services.health_service import HealthService
+from app.services.debug_window_service import DebugWindowService
 
 
 running = True
@@ -38,6 +39,8 @@ def main():
     presence_service = PresenceService(event_bus)
     system_service = SystemService(event_bus)
     health_service = HealthService(event_bus, state_manager)
+    debug_window_service = DebugWindowService(event_bus, state_manager)
+    
 
     def on_state_changed(payload):
         logger.info(
@@ -78,6 +81,7 @@ def main():
     presence_service.start()
     system_service.start()
     health_service.start()
+    debug_window_service.start()
     camera_service.start()
 
     logger.info("PresenceAgent rodando. Pressione CTRL+C para encerrar.")
@@ -90,6 +94,7 @@ def main():
         logger.info("Encerrando PresenceAgent...")
 
         camera_service.stop()
+        debug_window_service.stop()
         health_service.stop()
 
         state_manager.set_state(

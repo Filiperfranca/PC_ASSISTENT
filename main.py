@@ -50,29 +50,6 @@ def main():
     def on_camera_error(payload):
         logger.error(f"Erro de câmera recebido: {payload}")
 
-    def on_frame_captured(payload):
-        frame_counter["count"] += 1
-
-        if frame_counter["count"] % 30 == 0:
-            logger.info(f"Frames capturados até agora: {frame_counter['count']}")
-
-    def on_face_detected(payload):
-        face_counter["detected_events"] += 1
-
-        if face_counter["detected_events"] % 10 == 0:
-            logger.info(
-                f"FACE_DETECTED recebido. "
-                f"Total: {face_counter['detected_events']} | "
-                f"Rostos: {payload['faces_count']} | "
-                f"Principal: {payload['main_face']}"
-            )
-
-    def on_face_lost(payload):
-        face_counter["lost_events"] += 1
-
-        if face_counter["lost_events"] % 10 == 0:
-            logger.info(f"FACE_LOST recebido. Total: {face_counter['lost_events']}")
-
     def on_user_present(payload):
         logger.info(f"USER_PRESENT recebido: {payload}")
         state_manager.set_state(State.USER_PRESENT, reason=payload.get("reason", ""))
@@ -84,9 +61,6 @@ def main():
     event_bus.subscribe(Event.STATE_CHANGED, on_state_changed)
     event_bus.subscribe(Event.CAMERA_STARTED, on_camera_started)
     event_bus.subscribe(Event.CAMERA_ERROR, on_camera_error)
-    event_bus.subscribe(Event.FRAME_CAPTURED, on_frame_captured)
-    event_bus.subscribe(Event.FACE_DETECTED, on_face_detected)
-    event_bus.subscribe(Event.FACE_LOST, on_face_lost)
     event_bus.subscribe(Event.USER_PRESENT, on_user_present)
     event_bus.subscribe(Event.USER_AWAY, on_user_away)
 

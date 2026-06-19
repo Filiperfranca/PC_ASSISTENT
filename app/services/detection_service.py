@@ -58,12 +58,15 @@ class DetectionService:
 
         faces = self.face_cascade.detectMultiScale(
             gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(80, 80),
+            scaleFactor=1.08,
+            minNeighbors=6,
+            minSize=(90, 90),
         )
 
-        return faces
+        min_area = 120 * 120
+        faces = [face for face in faces if face[2] * face[3] >= min_area]
+
+        return faces    
 
     def _handle_face_detected(self, faces, frame_count: int) -> None:
         self.last_face_seen_at = time.time()

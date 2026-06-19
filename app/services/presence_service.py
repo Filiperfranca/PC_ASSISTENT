@@ -12,12 +12,18 @@ class PresenceService:
         self.event_bus = event_bus
 
         self.last_face_detected_at: float | None = None
-        self.first_face_detected_at: float | None = None
+        self.last_face_lost_at: float | None = None
+
+        self.present_candidate_started_at: float | None = None
+        self.away_candidate_started_at: float | None = None
 
         self.user_is_present = False
         self.user_is_away = False
 
-        self.face_loss_logged = False
+        self.face_is_currently_seen = False
+
+        self.present_candidate_logged = False
+        self.away_candidate_logged = False
 
     def start(self) -> None:
         logger.info("Iniciando PresenceService...")
@@ -31,24 +37,36 @@ class PresenceService:
         now = time.time()
 
         self.last_face_detected_at = now
-        self.face_loss_logged = False
+        self.last_face_lost_at = None
+        self.away_candidate_started_at = None
+        self.away_candidate_logged = False
 
-        if self.first_face_detected_at is None:
-            self.first_face_detected_at = now
-            logger.info("Primeiro rosto detectado. Iniciando confirmação de presença.")
+        if not self.face_is_currently_seen:
+            self.face_is_currently_seen = True
+            logger.info("Sinal facial voltou.")
 
-        visible_duration = now - self.first_face_detected_at
+        if self.present_candidate_started_at is None:
+            self.present_candidate_started_at = now
+            self.present_candidate_logged = False
+
+        visible_duration = now - self.present_candidate_started_at
+
+        if not self.present_candidate_logged:
+            logger.info("Candidato de presença iniciado.")
+            self.present_candidate_logged = True
 
         if (
             not self.user_is_present
             and visible_duration >= config.user_present_confirm_seconds
         ):
             self._set_user_present(
-                reason=f"Rosto confirmado por {visible_duration:.1f}s"
+                reason=f"Presença confirmada por {visible_duration:.1f}s"
             )
 
     def on_face_lost(self, payload: dict[str, Any]) -> None:
         now = time.time()
+
+        self.last_face_lost_at = now
 
         if self.last_face_detected_at is None:
             return
@@ -58,21 +76,34 @@ class PresenceService:
         if time_since_last_face < config.face_lost_grace_seconds:
             return
 
-        if not self.face_loss_logged:
+        if self.face_is_currently_seen:
+            self.face_is_currently_seen = False
             logger.info(
-                f"Rosto ausente há {time_since_last_face:.1f}s. "
-                "Passou da margem de tolerância."
+                f"Sinal facial ausente há {time_since_last_face:.1f}s. "
+                "Margem de tolerância excedida."
             )
-            self.face_loss_logged = True
 
-        self.first_face_detected_at = None
+        self.present_candidate_started_at = None
+        self.present_candidate_logged = False
+
+        if self.away_candidate_started_at is None:
+            self.away_candidate_started_at = now
+            self.away_candidate_logged = False
+
+        away_duration = now - self.away_candidate_started_at
+
+        if not self.away_candidate_logged:
+            logger.info("Candidato de ausência iniciado.")
+            self.away_candidate_logged = True
+
+        total_absence_duration = now - self.last_face_detected_at
 
         if (
             self.user_is_present
-            and time_since_last_face >= config.user_away_seconds
+            and total_absence_duration >= config.user_away_seconds
         ):
             self._set_user_away(
-                reason=f"Rosto ausente por {time_since_last_face:.1f}s"
+                reason=f"Ausência confirmada por {total_absence_duration:.1f}s"
             )
 
     def _set_user_present(self, reason: str = "") -> None:
@@ -81,6 +112,9 @@ class PresenceService:
 
         self.user_is_present = True
         self.user_is_away = False
+
+        self.away_candidate_started_at = None
+        self.away_candidate_logged = False
 
         logger.info(f"Usuário PRESENTE. {reason}")
 
@@ -98,6 +132,9 @@ class PresenceService:
 
         self.user_is_present = False
         self.user_is_away = True
+
+        self.present_candidate_started_at = None
+        self.present_candidate_logged = False
 
         logger.info(f"Usuário AUSENTE. {reason}")
 

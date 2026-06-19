@@ -33,6 +33,21 @@ class Config:
     detection_process_every_n_frames: int = int(os.getenv("DETECTION_PROCESS_EVERY_N_FRAMES", "3"))
     face_detected_streak: int = int(os.getenv("FACE_DETECTED_STREAK", "2"))
     face_lost_streak: int = int(os.getenv("FACE_LOST_STREAK", "4"))
+    enable_health_service: bool = (
+        os.getenv("ENABLE_HEALTH_SERVICE", "True").lower() == "true"
+    )
+
+    health_check_interval_seconds: int = int(
+        os.getenv("HEALTH_CHECK_INTERVAL_SECONDS", "30")
+    )
+
+    enable_debug_window: bool = (
+        os.getenv("ENABLE_DEBUG_WINDOW", "False").lower() == "true"
+    )
+
+    windows_lock_cooldown_seconds: int = int(
+        os.getenv("WINDOWS_LOCK_COOLDOWN_SECONDS", "120")
+    )
 
 
 config = Config()

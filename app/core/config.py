@@ -19,6 +19,14 @@ class Config:
     user_away_seconds: float = float(os.getenv("USER_AWAY_SECONDS", "30"))
     user_present_confirm_seconds: float = float(os.getenv("USER_PRESENT_CONFIRM_SECONDS", "2"))
 
+    enable_windows_lock: bool = (
+        os.getenv("ENABLE_WINDOWS_LOCK", "False").lower() == "true"
+    )
+
+    enable_system_actions: bool = (
+        os.getenv("ENABLE_SYSTEM_ACTIONS", "True").lower() == "true"
+    )
+
     debug_mode: bool = os.getenv("DEBUG_MODE", "True").lower() == "true"
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 

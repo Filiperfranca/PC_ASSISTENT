@@ -9,7 +9,7 @@ from app.core.states import State
 from app.services.camera_service import CameraService
 from app.services.detection_service import DetectionService
 from app.services.presence_service import PresenceService
-
+from app.services.system_service import SystemService
 
 running = True
 
@@ -33,6 +33,7 @@ def main():
     camera_service = CameraService(event_bus)
     detection_service = DetectionService(event_bus)
     presence_service = PresenceService(event_bus)
+    system_service = SystemService(event_bus)
 
     frame_counter = {"count": 0}
     face_counter = {"detected_events": 0, "lost_events": 0}
@@ -95,6 +96,7 @@ def main():
     detection_service.start()
     presence_service.start()
     camera_service.start()
+    system_service.start()
 
     logger.info("PresenceAgent rodando. Pressione CTRL+C para encerrar.")
 

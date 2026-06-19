@@ -6,10 +6,12 @@ from app.core.events import Event
 from app.core.logger import logger
 from app.core.state_manager import StateManager
 from app.core.states import State
+
 from app.services.camera_service import CameraService
 from app.services.detection_service import DetectionService
 from app.services.presence_service import PresenceService
 from app.services.system_service import SystemService
+
 
 running = True
 
@@ -35,9 +37,6 @@ def main():
     presence_service = PresenceService(event_bus)
     system_service = SystemService(event_bus)
 
-    frame_counter = {"count": 0}
-    face_counter = {"detected_events": 0, "lost_events": 0}
-
     def on_state_changed(payload):
         logger.info(
             f"Evento STATE_CHANGED recebido: "
@@ -52,11 +51,17 @@ def main():
 
     def on_user_present(payload):
         logger.info(f"USER_PRESENT recebido: {payload}")
-        state_manager.set_state(State.USER_PRESENT, reason=payload.get("reason", ""))
+        state_manager.set_state(
+            State.USER_PRESENT,
+            reason=payload.get("reason", ""),
+        )
 
     def on_user_away(payload):
         logger.info(f"USER_AWAY recebido: {payload}")
-        state_manager.set_state(State.USER_AWAY, reason=payload.get("reason", ""))
+        state_manager.set_state(
+            State.USER_AWAY,
+            reason=payload.get("reason", ""),
+        )
 
     event_bus.subscribe(Event.STATE_CHANGED, on_state_changed)
     event_bus.subscribe(Event.CAMERA_STARTED, on_camera_started)
@@ -69,21 +74,29 @@ def main():
 
     detection_service.start()
     presence_service.start()
-    camera_service.start()
     system_service.start()
+    camera_service.start()
 
     logger.info("PresenceAgent rodando. Pressione CTRL+C para encerrar.")
 
     try:
         while running:
             time.sleep(1)
+
     finally:
         logger.info("Encerrando PresenceAgent...")
 
         camera_service.stop()
 
-        state_manager.set_state(State.SHUTDOWN, reason="Encerramento solicitado")
-        event_bus.emit(Event.SYSTEM_SHUTDOWN, {"message": "Sistema encerrado"})
+        state_manager.set_state(
+            State.SHUTDOWN,
+            reason="Encerramento solicitado",
+        )
+
+        event_bus.emit(
+            Event.SYSTEM_SHUTDOWN,
+            {"message": "Sistema encerrado"},
+        )
 
         logger.info("PresenceAgent encerrado.")
 

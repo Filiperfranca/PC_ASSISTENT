@@ -1,0 +1,12 @@
+from enum import StrEnum
+
+
+class State(StrEnum):
+    BOOTING = "BOOTING"
+    READY = "READY"
+    SEARCHING_FACE = "SEARCHING_FACE"
+    FACE_VISIBLE = "FACE_VISIBLE"
+    USER_PRESENT = "USER_PRESENT"
+    USER_AWAY = "USER_AWAY"
+    ERROR = "ERROR"
+    SHUTDOWN = "SHUTDOWN"

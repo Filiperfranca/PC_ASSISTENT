@@ -22,5 +22,9 @@ class Config:
     debug_mode: bool = os.getenv("DEBUG_MODE", "True").lower() == "true"
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
+    detection_process_every_n_frames: int = int(os.getenv("DETECTION_PROCESS_EVERY_N_FRAMES", "3"))
+    face_detected_streak: int = int(os.getenv("FACE_DETECTED_STREAK", "2"))
+    face_lost_streak: int = int(os.getenv("FACE_LOST_STREAK", "4"))
+
 
 config = Config()

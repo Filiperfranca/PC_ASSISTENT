@@ -9,6 +9,8 @@ load_dotenv()
 @dataclass(frozen=True)
 class Config:
     camera_index: int = int(os.getenv("CAMERA_INDEX", "0"))
+    camera_backend: str = os.getenv("CAMERA_BACKEND", "AUTO").upper()
+
     frame_width: int = int(os.getenv("FRAME_WIDTH", "640"))
     frame_height: int = int(os.getenv("FRAME_HEIGHT", "480"))
     target_fps: int = int(os.getenv("TARGET_FPS", "10"))

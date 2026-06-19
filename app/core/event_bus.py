@@ -9,14 +9,15 @@ class EventBus:
         self._listeners: dict[str, list[Callable[[dict[str, Any]], None]]] = defaultdict(list)
 
     def subscribe(self, event_name: str, callback: Callable[[dict[str, Any]], None]) -> None:
-        self._listeners[event_name].append(callback)
+        self._listeners[str(event_name)].append(callback)
         logger.debug(f"Listener registrado para evento: {event_name}")
 
     def emit(self, event_name: str, payload: dict[str, Any] | None = None) -> None:
         if payload is None:
             payload = {}
 
-        logger.debug(f"Evento emitido: {event_name} | Payload: {payload}")
+        event_name = str(event_name)
+        logger.debug(f"Evento emitido: {event_name} | Payload: {self._summarize_payload(payload)}")
 
         listeners = self._listeners.get(event_name, [])
 
@@ -27,3 +28,15 @@ class EventBus:
                 logger.exception(
                     f"Erro ao executar listener do evento {event_name}: {error}"
                 )
+
+    def _summarize_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        summarized = {}
+
+        for key, value in payload.items():
+            if key == "frame":
+                shape = getattr(value, "shape", None)
+                summarized[key] = f"<frame shape={shape}>"
+            else:
+                summarized[key] = value
+
+        return summarized

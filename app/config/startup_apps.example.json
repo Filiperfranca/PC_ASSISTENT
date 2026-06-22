@@ -1,0 +1,35 @@
+[
+    {
+        "name": "Microsoft Teams",
+        "enabled": true,
+        "type": "uri",
+        "target": "msteams:"
+    },
+    {
+        "name": "SouGov - Chrome",
+        "enabled": true,
+        "type": "process",
+        "target": "chrome",
+        "args": [
+            "https://sougov.sigepe.gov.br/sougov/"
+        ]
+    },
+    {
+        "name": "Brave - Perfil MCOM",
+        "enabled": true,
+        "type": "process",
+        "target": "brave",
+        "args": [
+            "--profile-directory=Default"
+        ]
+    },
+    {
+        "name": "Brave - Perfil Pessoal",
+        "enabled": true,
+        "type": "process",
+        "target": "brave",
+        "args": [
+            "--profile-directory=Profile 1"
+        ]
+    }
+]

@@ -23,13 +23,13 @@ def setup_logger(name: str = "presence_agent") -> logging.Logger:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
+    if config.log_to_console:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
 
     file_handler = logging.FileHandler(log_file, encoding="utf-8")
     file_handler.setFormatter(formatter)
-
-    logger.addHandler(console_handler)
     logger.addHandler(file_handler)
 
     return logger

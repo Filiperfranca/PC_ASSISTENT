@@ -30,6 +30,10 @@ class Config:
     debug_mode: bool = os.getenv("DEBUG_MODE", "True").lower() == "true"
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
+    log_to_console: bool = (
+        os.getenv("LOG_TO_CONSOLE", "True").lower() == "true"
+    )
+
     detection_process_every_n_frames: int = int(os.getenv("DETECTION_PROCESS_EVERY_N_FRAMES", "3"))
     face_detected_streak: int = int(os.getenv("FACE_DETECTED_STREAK", "2"))
     face_lost_streak: int = int(os.getenv("FACE_LOST_STREAK", "4"))
@@ -155,6 +159,42 @@ class Config:
 
     teams_away_activity: str = os.getenv(
         "TEAMS_AWAY_ACTIVITY", "Away"
+    )
+
+    enable_startup_assistant: bool = (
+        os.getenv("ENABLE_STARTUP_ASSISTANT", "False").lower() == "true"
+    )
+
+    startup_require_authorized_user: bool = (
+        os.getenv("STARTUP_REQUIRE_AUTHORIZED_USER", "True").lower() == "true"
+    )
+
+    startup_run_once_per_session: bool = (
+        os.getenv("STARTUP_RUN_ONCE_PER_SESSION", "True").lower() == "true"
+    )
+
+    startup_greeting_enabled: bool = (
+        os.getenv("STARTUP_GREETING_ENABLED", "True").lower() == "true"
+    )
+
+    startup_greeting_mode: str = os.getenv(
+        "STARTUP_GREETING_MODE", "log"
+    ).lower()
+
+    startup_greeting_message: str = os.getenv(
+        "STARTUP_GREETING_MESSAGE", "Olá, bem-vindo de volta."
+    )
+
+    startup_open_apps_enabled: bool = (
+        os.getenv("STARTUP_OPEN_APPS_ENABLED", "True").lower() == "true"
+    )
+
+    startup_apps_config: str = os.getenv(
+        "STARTUP_APPS_CONFIG", "app/config/startup_apps.json"
+    )
+
+    startup_app_delay_seconds: float = float(
+        os.getenv("STARTUP_APP_DELAY_SECONDS", "1.5")
     )
 
 

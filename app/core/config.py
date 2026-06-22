@@ -114,6 +114,49 @@ class Config:
         os.getenv("MIN_AUTHORIZED_FACE_WIDTH", "150")
     )
 
+    enable_teams_integration: bool = (
+        os.getenv("ENABLE_TEAMS_INTEGRATION", "False").lower() == "true"
+    )
+
+    teams_provider: str = os.getenv("TEAMS_PROVIDER", "mock").lower()
+
+    teams_tenant_id: str = os.getenv("TEAMS_TENANT_ID", "common")
+    teams_client_id: str = os.getenv("TEAMS_CLIENT_ID", "")
+    teams_user_id: str = os.getenv("TEAMS_USER_ID", "me")
+    teams_session_id: str = os.getenv("TEAMS_SESSION_ID", "")
+
+    teams_presence_expiration: str = os.getenv(
+        "TEAMS_PRESENCE_EXPIRATION", "PT15M"
+    )
+
+    teams_keepalive_seconds: int = int(
+        os.getenv("TEAMS_KEEPALIVE_SECONDS", "240")
+    )
+
+    teams_set_available_on_present: bool = (
+        os.getenv("TEAMS_SET_AVAILABLE_ON_PRESENT", "True").lower() == "true"
+    )
+
+    teams_set_away_on_away: bool = (
+        os.getenv("TEAMS_SET_AWAY_ON_AWAY", "True").lower() == "true"
+    )
+
+    teams_available_availability: str = os.getenv(
+        "TEAMS_AVAILABLE_AVAILABILITY", "Available"
+    )
+
+    teams_available_activity: str = os.getenv(
+        "TEAMS_AVAILABLE_ACTIVITY", "Available"
+    )
+
+    teams_away_availability: str = os.getenv(
+        "TEAMS_AWAY_AVAILABILITY", "Away"
+    )
+
+    teams_away_activity: str = os.getenv(
+        "TEAMS_AWAY_ACTIVITY", "Away"
+    )
+
 
 
 config = Config()

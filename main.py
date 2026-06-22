@@ -15,6 +15,7 @@ from app.services.health_service import HealthService
 from app.services.debug_window_service import DebugWindowService
 from app.services.recognition_service import RecognitionService
 from app.services.security_service import SecurityService
+from app.services.prompt_service import PromptService
 
 
 running = True
@@ -44,6 +45,7 @@ def main():
     debug_window_service = DebugWindowService(event_bus, state_manager)
     recognition_service = RecognitionService(event_bus)
     security_service = SecurityService(event_bus)
+    prompt_service = PromptService(event_bus)
     
 
     def on_state_changed(payload):
@@ -115,6 +117,7 @@ def main():
     presence_service.start()
     system_service.start()
     security_service.start()
+    prompt_service.start()
     health_service.start()
     debug_window_service.start()
     camera_service.start()

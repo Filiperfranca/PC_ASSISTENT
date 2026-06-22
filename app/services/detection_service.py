@@ -54,7 +54,7 @@ class DetectionService:
         faces = self._detect_faces(frame)
 
         if len(faces) > 0:
-            self._handle_detection(faces, frame_count)
+            self._handle_detection(faces, frame_count, frame)
         else:
             self._handle_no_detection(frame_count)
 
@@ -73,29 +73,68 @@ class DetectionService:
 
         return faces
 
-    def _handle_detection(self, faces, frame_count: int) -> None:
+    def _handle_detection(self, faces, frame_count: int, frame) -> None:
         self.consecutive_detections += 1
         self.consecutive_losses = 0
 
-        largest_face = max(faces, key=lambda face: face[2] * face[3])
-        x, y, width, height = largest_face
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        frame_height, frame_width = frame.shape[:2]
 
-        self.last_main_face = {
-            "x": int(x),
-            "y": int(y),
-            "width": int(width),
-            "height": int(height),
-        }
+        detected_faces = []
+
+        for face_box in faces:
+            x, y, width, height = face_box
+
+            x = max(int(x), 0)
+            y = max(int(y), 0)
+            width = int(width)
+            height = int(height)
+
+            x2 = min(x + width, frame_width)
+            y2 = min(y + height, frame_height)
+
+            face_image = gray[y:y2, x:x2]
+
+            if face_image.size == 0:
+                continue
+
+            face_image = cv2.resize(face_image, (200, 200))
+            face_image = cv2.equalizeHist(face_image)
+
+            detected_faces.append(
+                {
+                    "box": {
+                        "x": x,
+                        "y": y,
+                        "width": x2 - x,
+                        "height": y2 - y,
+                    },
+                    "face_image": face_image,
+                    "area": (x2 - x) * (y2 - y),
+                }
+            )
+
+        if not detected_faces:
+            logger.debug("Nenhum recorte facial válido encontrado.")
+            return
+
+        main_detected_face = max(
+            detected_faces,
+            key=lambda item: item["area"],
+        )
+
+        self.last_main_face = main_detected_face["box"]
 
         logger.debug(
             f"Rosto detectado bruto. "
-            f"Streak={self.consecutive_detections} | Face={self.last_main_face}"
+            f"Streak={self.consecutive_detections} | "
+            f"Faces={len(detected_faces)} | "
+            f"Main={self.last_main_face}"
         )
 
-        if (
-            not self.face_currently_visible
-            and self.consecutive_detections >= config.face_detected_streak
-        ):
+        is_stable = self.consecutive_detections >= config.face_detected_streak
+
+        if not self.face_currently_visible and is_stable:
             self.face_currently_visible = True
             logger.info(f"Rosto estabilizado/detectado: {self.last_main_face}")
 
@@ -103,10 +142,13 @@ class DetectionService:
             Event.FACE_DETECTED,
             {
                 "frame_count": frame_count,
-                "faces_count": len(faces),
+                "faces_count": len(detected_faces),
+                "faces": detected_faces,
                 "main_face": self.last_main_face,
+                "face_image": main_detected_face["face_image"],
                 "timestamp": time.time(),
                 "consecutive_detections": self.consecutive_detections,
+                "is_stable": is_stable,
             },
         )
 

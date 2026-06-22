@@ -33,9 +33,20 @@ class EventBus:
         summarized = {}
 
         for key, value in payload.items():
-            if key == "frame":
+            if key in ("frame", "face_image"):
                 shape = getattr(value, "shape", None)
-                summarized[key] = f"<frame shape={shape}>"
+                summarized[key] = f"<image shape={shape}>"
+
+            elif key == "faces" and isinstance(value, list):
+                summarized[key] = [
+                    {
+                        "box": item.get("box"),
+                        "area": item.get("area"),
+                        "face_image": f"<image shape={getattr(item.get('face_image'), 'shape', None)}>",
+                    }
+                    for item in value
+                ]
+
             else:
                 summarized[key] = value
 

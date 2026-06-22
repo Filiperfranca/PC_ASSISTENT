@@ -49,5 +49,60 @@ class Config:
         os.getenv("WINDOWS_LOCK_COOLDOWN_SECONDS", "120")
     )
 
+    enable_face_recognition: bool = (
+        os.getenv("ENABLE_FACE_RECOGNITION", "True").lower() == "true"
+    )
+
+    authorized_user: str = os.getenv("AUTHORIZED_USER", "filipe").lower()
+
+    recognition_confidence_threshold: float = float(
+        os.getenv("RECOGNITION_CONFIDENCE_THRESHOLD", "75")
+    )
+
+    recognition_process_every_n_events: int = int(
+        os.getenv("RECOGNITION_PROCESS_EVERY_N_EVENTS", "3")
+    )
+
+    enable_security_service: bool = (
+        os.getenv("ENABLE_SECURITY_SERVICE", "True").lower() == "true"
+    )
+
+    unknown_lock_enabled: bool = (
+        os.getenv("UNKNOWN_LOCK_ENABLED", "False").lower() == "true"
+    )
+
+    unknown_confirm_seconds: float = float(
+        os.getenv("UNKNOWN_CONFIRM_SECONDS", "3")
+    )
+
+    unknown_event_streak: int = int(
+        os.getenv("UNKNOWN_EVENT_STREAK", "3")
+    )
+
+    min_security_face_width: int = int(
+        os.getenv("MIN_SECURITY_FACE_WIDTH", "160")
+    )
+
+    authorized_grace_seconds: float = float(
+        os.getenv("AUTHORIZED_GRACE_SECONDS", "10")
+    )
+
+    multi_face_warning_enabled: bool = (
+        os.getenv("MULTI_FACE_WARNING_ENABLED", "True").lower() == "true"
+    )
+
+    multi_face_confirm_seconds: float = float(
+        os.getenv("MULTI_FACE_CONFIRM_SECONDS", "3")
+    )
+
+    multi_face_prompt_cooldown_seconds: float = float(
+        os.getenv("MULTI_FACE_PROMPT_COOLDOWN_SECONDS", "120")
+    )
+
+    multi_face_auto_lock_on_timeout: bool = (
+        os.getenv("MULTI_FACE_AUTO_LOCK_ON_TIMEOUT", "False").lower() == "true"
+    )
+
+
 
 config = Config()

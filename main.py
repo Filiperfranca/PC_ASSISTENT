@@ -13,6 +13,8 @@ from app.services.presence_service import PresenceService
 from app.services.system_service import SystemService
 from app.services.health_service import HealthService
 from app.services.debug_window_service import DebugWindowService
+from app.services.recognition_service import RecognitionService
+from app.services.security_service import SecurityService
 
 
 running = True
@@ -40,6 +42,8 @@ def main():
     system_service = SystemService(event_bus)
     health_service = HealthService(event_bus, state_manager)
     debug_window_service = DebugWindowService(event_bus, state_manager)
+    recognition_service = RecognitionService(event_bus)
+    security_service = SecurityService(event_bus)
     
 
     def on_state_changed(payload):
@@ -67,19 +71,50 @@ def main():
             State.USER_AWAY,
             reason=payload.get("reason", ""),
         )
+    def on_identity_recognized(payload):
+        logger.info(f"IDENTITY_RECOGNIZED recebido: {payload}")
+
+    def on_identity_unknown(payload):
+        logger.warning(f"IDENTITY_UNKNOWN recebido: {payload}")
+
+    def on_identity_uncertain(payload):
+        logger.warning(f"IDENTITY_UNCERTAIN recebido: {payload}")
+    def on_security_alert(payload):
+        logger.error(f"SECURITY_ALERT recebido: {payload}")
+    
+    def on_security_suspicious(payload):
+        logger.warning(f"SECURITY_SUSPICIOUS recebido: {payload}")
+    
+    def on_multiple_faces_detected(payload):
+        logger.warning(f"MULTIPLE_FACES_DETECTED recebido: {payload}")
+
+
+    def on_multiple_faces_confirmed(payload):
+        logger.warning(f"MULTIPLE_FACES_CONFIRMED recebido: {payload}")
+
+
 
     event_bus.subscribe(Event.STATE_CHANGED, on_state_changed)
     event_bus.subscribe(Event.CAMERA_STARTED, on_camera_started)
     event_bus.subscribe(Event.CAMERA_ERROR, on_camera_error)
     event_bus.subscribe(Event.USER_PRESENT, on_user_present)
     event_bus.subscribe(Event.USER_AWAY, on_user_away)
+    event_bus.subscribe(Event.IDENTITY_RECOGNIZED, on_identity_recognized)
+    event_bus.subscribe(Event.IDENTITY_UNKNOWN, on_identity_unknown)
+    event_bus.subscribe(Event.IDENTITY_UNCERTAIN, on_identity_uncertain)
+    event_bus.subscribe(Event.SECURITY_ALERT, on_security_alert)
+    event_bus.subscribe(Event.SECURITY_SUSPICIOUS, on_security_suspicious)
+    event_bus.subscribe(Event.MULTIPLE_FACES_DETECTED, on_multiple_faces_detected)
+    event_bus.subscribe(Event.MULTIPLE_FACES_CONFIRMED, on_multiple_faces_confirmed)
 
     event_bus.emit(Event.SYSTEM_BOOT, {"message": "Sistema inicializado"})
     state_manager.set_state(State.READY, reason="Core inicializado com sucesso")
 
     detection_service.start()
+    recognition_service.start()
     presence_service.start()
     system_service.start()
+    security_service.start()
     health_service.start()
     debug_window_service.start()
     camera_service.start()

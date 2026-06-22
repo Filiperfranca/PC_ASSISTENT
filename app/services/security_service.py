@@ -143,7 +143,29 @@ class SecurityService:
             )
 
     def on_identity_uncertain(self, payload: dict[str, Any]) -> None:
-        logger.debug(f"Identidade incerta recebida: {payload}")
+        now = time.time()
+
+        faces_count = payload.get("faces_count", 1)
+
+        if faces_count >= 2:
+            logger.info(
+                "UNCERTAIN recebido em cenário multi-face. "
+                "Escalonamento ignorado; fluxo multi-face assumirá."
+            )
+            return
+
+        if self._authorized_seen_recently(now):
+            logger.debug(
+                "UNCERTAIN ignorado: usuário autorizado foi visto recentemente."
+            )
+            return
+
+        logger.warning(
+            "Identidade incerta sem usuário autorizado recente. "
+            "Tratando como suspeita fraca."
+        )
+
+        self.on_identity_unknown(payload)
 
     def on_face_detected(self, payload: dict[str, Any]) -> None:
         if not config.multi_face_warning_enabled:

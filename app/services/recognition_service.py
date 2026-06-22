@@ -48,9 +48,7 @@ class RecognitionService:
         with open(self.labels_path, "r", encoding="utf-8") as file:
             self.labels = json.load(file)
 
-        logger.info(
-            f"Modelo facial carregado. Labels: {self.labels}"
-        )
+        logger.info(f"Modelo facial carregado. Labels: {self.labels}")
 
     def on_face_detected(self, payload: dict[str, Any]) -> None:
         if self.recognizer is None:
@@ -86,65 +84,170 @@ class RecognitionService:
             ]
 
         for index, face_data in enumerate(faces):
-            face_image = face_data.get("face_image")
-            face_box = face_data.get("box")
+            self._recognize_face(
+                index=index,
+                face_data=face_data,
+                faces_count=len(faces),
+                frame_count=payload.get("frame_count"),
+            )
 
-            if face_image is None:
-                continue
+    def _recognize_face(
+        self,
+        index: int,
+        face_data: dict[str, Any],
+        faces_count: int,
+        frame_count: int | None,
+    ) -> None:
+        face_image = face_data.get("face_image")
+        face_box = face_data.get("box")
 
-            label_id, confidence = self.recognizer.predict(face_image)
+        if face_image is None:
+            return
 
-            predicted_user = self.labels.get(str(label_id), "unknown").lower()
+        label_id, confidence = self.recognizer.predict(face_image)
 
-            recognition_payload = {
-                "face_index": index,
-                "faces_count": len(faces),
-                "predicted_user": predicted_user,
-                "authorized_user": config.authorized_user,
-                "confidence": float(confidence),
-                "threshold": config.recognition_confidence_threshold,
-                "frame_count": payload.get("frame_count"),
-                "main_face": face_box,
-            }
+        predicted_user = self.labels.get(str(label_id), "unknown").lower()
 
-            if (
-                predicted_user == config.authorized_user
-                and confidence <= config.recognition_confidence_threshold
-            ):
-                logger.info(
-                    f"Identidade reconhecida: {predicted_user} "
-                    f"| face_index={index} "
-                    f"| confidence={confidence:.2f}"
-                )
+        authorized_threshold = config.recognition_authorized_threshold
+        unknown_threshold = config.recognition_unknown_threshold
 
-                self.event_bus.emit(
-                    Event.IDENTITY_RECOGNIZED,
-                    recognition_payload,
-                )
-                continue
+        recognition_payload = {
+            "face_index": index,
+            "faces_count": faces_count,
+            "predicted_user": predicted_user,
+            "authorized_user": config.authorized_user,
+            "confidence": float(confidence),
+            "authorized_threshold": authorized_threshold,
+            "unknown_threshold": unknown_threshold,
+            "frame_count": frame_count,
+            "main_face": face_box,
+        }
 
-            if confidence > config.recognition_confidence_threshold:
-                logger.info(
-                    f"Identidade desconhecida/incerta. "
-                    f"Predito={predicted_user} "
-                    f"| face_index={index} "
-                    f"| confidence={confidence:.2f}"
-                )
+        if self._is_authorized_user(
+            predicted_user=predicted_user,
+            confidence=confidence,
+            authorized_threshold=authorized_threshold,
+            face_box=face_box,
+        ):
+            self._emit_identity_recognized(
+                predicted_user=predicted_user,
+                index=index,
+                confidence=confidence,
+                payload=recognition_payload,
+            )
+            return
 
-                self.event_bus.emit(
-                    Event.IDENTITY_UNKNOWN,
-                    recognition_payload,
-                )
-                continue
+        if self._is_unknown(
+            confidence=confidence,
+            unknown_threshold=unknown_threshold,
+        ):
+            self._emit_identity_unknown(
+                predicted_user=predicted_user,
+                index=index,
+                confidence=confidence,
+                payload=recognition_payload,
+            )
+            return
 
+        self._emit_identity_uncertain(
+            predicted_user=predicted_user,
+            index=index,
+            confidence=confidence,
+            authorized_threshold=authorized_threshold,
+            unknown_threshold=unknown_threshold,
+            payload=recognition_payload,
+        )
+
+    def _is_authorized_user(
+        self,
+        predicted_user: str,
+        confidence: float,
+        authorized_threshold: float,
+        face_box: dict[str, Any] | None,
+    ) -> bool:
+        if predicted_user != config.authorized_user:
+            return False
+
+        if confidence > authorized_threshold:
+            return False
+
+        if not face_box:
+            return False
+
+        face_width = face_box.get("width", 0)
+
+        if face_width < config.min_authorized_face_width:
             logger.info(
-                f"Identidade incerta. "
-                f"Predito={predicted_user} "
-                f"| face_index={index} "
-                f"| confidence={confidence:.2f}"
+                "Autorização recusada: rosto pequeno demais "
+                f"| width={face_width} | mínimo={config.min_authorized_face_width}"
             )
+            return False
 
-            self.event_bus.emit(
-                Event.IDENTITY_UNCERTAIN,
-                recognition_payload,
-            )
+        return True
+
+
+    def _is_unknown(
+        self,
+        confidence: float,
+        unknown_threshold: float,
+    ) -> bool:
+        return confidence >= unknown_threshold
+
+    def _emit_identity_recognized(
+        self,
+        predicted_user: str,
+        index: int,
+        confidence: float,
+        payload: dict[str, Any],
+    ) -> None:
+        logger.info(
+            f"Identidade reconhecida: {predicted_user} "
+            f"| face_index={index} "
+            f"| confidence={confidence:.2f}"
+        )
+
+        self.event_bus.emit(
+            Event.IDENTITY_RECOGNIZED,
+            payload,
+        )
+
+    def _emit_identity_unknown(
+        self,
+        predicted_user: str,
+        index: int,
+        confidence: float,
+        payload: dict[str, Any],
+    ) -> None:
+        logger.info(
+            f"Identidade desconhecida. "
+            f"Predito={predicted_user} "
+            f"| face_index={index} "
+            f"| confidence={confidence:.2f}"
+        )
+
+        self.event_bus.emit(
+            Event.IDENTITY_UNKNOWN,
+            payload,
+        )
+
+    def _emit_identity_uncertain(
+        self,
+        predicted_user: str,
+        index: int,
+        confidence: float,
+        authorized_threshold: float,
+        unknown_threshold: float,
+        payload: dict[str, Any],
+    ) -> None:
+        logger.info(
+            f"Identidade incerta. "
+            f"Predito={predicted_user} "
+            f"| face_index={index} "
+            f"| confidence={confidence:.2f} "
+            f"| faixa_incerta={authorized_threshold}-{unknown_threshold}"
+        )
+
+        self.event_bus.emit(
+            Event.IDENTITY_UNCERTAIN,
+            payload,
+        )

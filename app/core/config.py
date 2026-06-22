@@ -102,6 +102,17 @@ class Config:
     multi_face_auto_lock_on_timeout: bool = (
         os.getenv("MULTI_FACE_AUTO_LOCK_ON_TIMEOUT", "False").lower() == "true"
     )
+    recognition_authorized_threshold: float = float(
+        os.getenv("RECOGNITION_AUTHORIZED_THRESHOLD", "70")
+    )
+
+    recognition_unknown_threshold: float = float(
+        os.getenv("RECOGNITION_UNKNOWN_THRESHOLD", "80")
+    )
+
+    min_authorized_face_width: int = int(
+        os.getenv("MIN_AUTHORIZED_FACE_WIDTH", "150")
+    )
 
 
 

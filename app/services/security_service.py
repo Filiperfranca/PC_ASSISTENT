@@ -45,7 +45,7 @@ class SecurityService:
             return
 
         self.last_authorized_seen_at = time.time()
-        self._reset_unknown_tracking()
+        self._reset_unknown_suspicion("Usuário autorizado reconhecido")
 
         logger.debug(
             f"SecurityService: usuário autorizado reconhecido: {predicted_user}"
@@ -143,8 +143,6 @@ class SecurityService:
             )
 
     def on_identity_uncertain(self, payload: dict[str, Any]) -> None:
-        now = time.time()
-
         faces_count = payload.get("faces_count", 1)
 
         if faces_count >= 2:
@@ -152,20 +150,16 @@ class SecurityService:
                 "UNCERTAIN recebido em cenário multi-face. "
                 "Escalonamento ignorado; fluxo multi-face assumirá."
             )
+            self._reset_unknown_suspicion("UNCERTAIN em cenário multi-face")
             return
 
-        if self._authorized_seen_recently(now):
-            logger.debug(
-                "UNCERTAIN ignorado: usuário autorizado foi visto recentemente."
-            )
-            return
-
-        logger.warning(
-            "Identidade incerta sem usuário autorizado recente. "
-            "Tratando como suspeita fraca."
+        logger.info(
+            "Identidade incerta recebida. "
+            "Não autoriza usuário e não aciona suspeita automaticamente."
         )
 
-        self.on_identity_unknown(payload)
+        self._reset_unknown_suspicion("IDENTITY_UNCERTAIN recebido")
+
 
     def on_face_detected(self, payload: dict[str, Any]) -> None:
         if not config.multi_face_warning_enabled:
@@ -239,9 +233,10 @@ class SecurityService:
 
     def on_face_lost(self, payload: dict[str, Any]) -> None:
         self._reset_multi_face_tracking()
+        self._reset_unknown_suspicion("FACE_LOST recebido")
 
     def on_user_away(self, payload: dict[str, Any]) -> None:
-        self._reset_unknown_tracking()
+        self._reset_unknown_suspicion("Usuário autorizado reconhecido")
         self._reset_multi_face_tracking()
 
     def _authorized_seen_recently(self, now: float) -> bool:
@@ -260,7 +255,10 @@ class SecurityService:
 
         return elapsed >= config.multi_face_prompt_cooldown_seconds
 
-    def _reset_unknown_tracking(self) -> None:
+    def _reset_unknown_suspicion(self, reason: str) -> None:
+        if self.unknown_started_at is not None or self.unknown_streak > 0:
+            logger.info(f"Suspeita de unknown resetada. Motivo: {reason}")
+
         self.unknown_started_at = None
         self.unknown_streak = 0
         self.unknown_alert_triggered = False

@@ -18,6 +18,7 @@ from app.services.security_service import SecurityService
 from app.services.startup_assistant_service import StartupAssistantService
 from app.services.system_service import SystemService
 from app.services.teams_presence_service import TeamsPresenceService
+from app.core.single_instance import SingleInstance
 
 
 running = True
@@ -136,42 +137,56 @@ def main():
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
-    logger.info("Iniciando PresenceAgent...")
+    single_instance = SingleInstance()
 
-    event_bus = EventBus()
-    state_manager = StateManager(event_bus)
+    if not single_instance.acquire():
+        return
 
-    register_core_listeners(event_bus, state_manager)
-
-    services = create_services(event_bus, state_manager)
-
-    event_bus.emit(Event.SYSTEM_BOOT, {"message": "Sistema inicializado"})
-    state_manager.set_state(State.READY, reason="Core inicializado com sucesso")
-
-    start_services(services)
-
-    logger.info("PresenceAgent rodando. Pressione CTRL+C para encerrar.")
+    services = None
+    state_manager = None
+    event_bus = None
 
     try:
+        logger.info("Iniciando PresenceAgent...")
+
+        event_bus = EventBus()
+        state_manager = StateManager(event_bus)
+
+        register_core_listeners(event_bus, state_manager)
+
+        services = create_services(event_bus, state_manager)
+
+        event_bus.emit(Event.SYSTEM_BOOT, {"message": "Sistema inicializado"})
+        state_manager.set_state(State.READY, reason="Core inicializado com sucesso")
+
+        start_services(services)
+
+        logger.info("PresenceAgent rodando. Pressione CTRL+C para encerrar.")
+
         while running:
             time.sleep(1)
 
     finally:
         logger.info("Encerrando PresenceAgent...")
 
-        stop_services(services)
+        if services is not None:
+            stop_services(services)
 
-        state_manager.set_state(
-            State.SHUTDOWN,
-            reason="Encerramento solicitado",
-        )
+        if state_manager is not None:
+            state_manager.set_state(
+                State.SHUTDOWN,
+                reason="Encerramento solicitado",
+            )
 
-        event_bus.emit(
-            Event.SYSTEM_SHUTDOWN,
-            {"message": "Sistema encerrado"},
-        )
+        if event_bus is not None:
+            event_bus.emit(
+                Event.SYSTEM_SHUTDOWN,
+                {"message": "Sistema encerrado"},
+            )
 
         logger.info("PresenceAgent encerrado.")
+
+        single_instance.release()
 
 
 if __name__ == "__main__":

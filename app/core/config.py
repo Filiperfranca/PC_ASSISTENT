@@ -57,7 +57,7 @@ class Config:
         os.getenv("ENABLE_FACE_RECOGNITION", "True").lower() == "true"
     )
 
-    authorized_user: str = os.getenv("AUTHORIZED_USER", "filipe").lower()
+    authorized_user: str = os.getenv("AUTHORIZED_USER", "authorized_user").lower()
 
     recognition_confidence_threshold: float = float(
         os.getenv("RECOGNITION_CONFIDENCE_THRESHOLD", "75")

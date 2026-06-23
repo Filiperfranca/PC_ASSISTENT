@@ -3,7 +3,6 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 
@@ -20,6 +19,9 @@ class PresenceAgentAdminMenu:
         self.startup_apps_path = self.config_dir / "startup_apps.json"
         self.env_path = self.project_root / ".env"
 
+        self.assets_dir = self.project_root / "assets"
+        self.logo_path = self.assets_dir / "mcom_ascii.txt"
+        
     def run(self):
         while True:
             self.clear_screen()
@@ -57,33 +59,63 @@ class PresenceAgentAdminMenu:
                 print("\nOpção inválida.")
                 self.pause()
 
+    def enable_ansi_colors(self):
+        # Ajuda o terminal do Windows a aceitar cores ANSI.
+        os.system("")
+
+    def color(self, text, ansi_code):
+        return f"\033[{ansi_code}m{text}\033[0m"
+
+    def load_logo(self):
+        if not self.logo_path.exists():
+            return None
+
+        logo = self.logo_path.read_text(encoding="utf-8")
+
+        # Caso a arte venha com \# por causa de escape/cópia.
+        logo = logo.replace("\\#", "#")
+
+        return logo.rstrip()
+
     def print_header(self):
-        print("=" * 72)
-        print("PresenceAgent - Menu Administrativo")
-        print("=" * 72)
-        print("Uso recomendado: TI / suporte autorizado")
-        print("Atenção: este menu pode manipular dados biométricos locais.")
-        print("=" * 72)
+        self.enable_ansi_colors()
+
+        logo = self.load_logo()
+
+        if logo:
+            print(self.color(logo, "36"))
+
+        print(self.color("=" * 72, "36"))
+        print(self.color("MCOM | PresenceAgent - Console Administrativo", "1;37"))
+        print(self.color("=" * 72, "36"))
+        print(self.color("Uso restrito: TI / suporte autorizado", "33"))
+        print(self.color("Atenção: este menu manipula dados biométricos locais.", "31"))
+        print(self.color("=" * 72, "36"))
 
     def print_menu(self):
-        print("\nOperação")
-        print("  1. Ver status do ambiente")
-        print("  2. Cadastrar / atualizar rosto do usuário")
-        print("  3. Treinar modelo facial")
-        print("  4. Testar reconhecedor facial")
-        print("  5. Validar startup_apps.json")
-        print("  6. Abrir pasta de logs")
-        print("  7. Abrir log mais recente")
-        print("  8. Encerrar PresenceAgent em execução")
+        print()
+        print(self.color("OPERAÇÃO", "1;36"))
+        print("  [1] Ver status do ambiente")
+        print("  [2] Cadastrar / atualizar rosto do usuário")
+        print("  [3] Treinar modelo facial")
+        print("  [4] Testar reconhecedor facial")
+        print("  [5] Validar startup_apps.json")
+        print("  [6] Abrir pasta de logs")
+        print("  [7] Abrir log mais recente")
+        print("  [8] Encerrar PresenceAgent em execução")
 
-        print("\nDados biométricos")
-        print("  9. Remover amostras faciais de um usuário")
-        print(" 10. Apagar TODOS os dados biométricos locais")
+        print()
+        print(self.color("DADOS BIOMÉTRICOS", "1;35"))
+        print("  [9] Remover amostras faciais de um usuário")
+        print(" [10] Apagar TODOS os dados biométricos locais")
 
-        print("\nGovernança / LGPD")
-        print(" 11. Exibir relatório de prontidão LGPD")
+        print()
+        print(self.color("GOVERNANÇA / LGPD", "1;33"))
+        print(" [11] Exibir relatório de prontidão LGPD")
 
-        print("\n  0. Sair")
+        print()
+        print(self.color("SAIR", "1;37"))
+        print("  [0] Sair")
 
     def show_status(self):
         self.clear_screen()
@@ -124,7 +156,7 @@ class PresenceAgentAdminMenu:
         self.clear_screen()
         self.print_section("Cadastrar / atualizar rosto")
 
-        user = input("Usuário autorizado (ex: filipe): ").strip()
+        user = input("Identificador do usuário autorizado, ex: login institucional: ").strip()
         if not user:
             print("Usuário não informado.")
             self.pause()
@@ -146,7 +178,31 @@ class PresenceAgentAdminMenu:
             return
 
         self.run_python_tool("tools/enroll_user.py", ["--user", user, "--samples", samples])
+        if self.confirm(f"Deseja definir AUTHORIZED_USER={user} no .env?"):
+            self.update_env_value("AUTHORIZED_USER", user)
+            print(f"AUTHORIZED_USER atualizado para: {user}")
         self.pause()
+
+    def update_env_value(self, key, value):
+        lines = []
+
+        if self.env_path.exists():
+            lines = self.env_path.read_text(encoding="utf-8").splitlines()
+
+        updated = False
+        new_lines = []
+
+        for line in lines:
+            if line.startswith(f"{key}="):
+                new_lines.append(f"{key}={value}")
+                updated = True
+            else:
+                new_lines.append(line)
+
+        if not updated:
+            new_lines.append(f"{key}={value}")
+
+        self.env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
     def train_recognizer(self):
         self.clear_screen()
@@ -154,12 +210,58 @@ class PresenceAgentAdminMenu:
 
         print("Este processo lê app/data/faces e gera/atualiza app/data/models.")
         print("Em uso institucional, as imagens brutas devem ser apagadas após validação do modelo.")
+        print("O modelo treinado continua sendo dado biométrico sensível e deve ser protegido.")
 
         if not self.confirm("Treinar modelo agora?"):
             return
 
-        self.run_python_tool("tools/train_recognizer.py", [])
+        success = self.run_python_tool("tools/train_recognizer.py", [])
+
+        if not success:
+            print("\nTreinamento não concluído. Verifique os erros acima.")
+            self.pause()
+            return
+
+        print("\nTreinamento concluído.")
+        print("Por segurança/LGPD, recomenda-se apagar as imagens faciais brutas após validar o modelo.")
+        print("Atenção: se apagar as imagens, para retreinar será necessário coletar novas amostras.")
+
+        if self.confirm("Deseja apagar agora as imagens faciais brutas de treinamento?"):
+            self.remove_all_face_samples_after_training()
+
         self.pause()
+    
+    def remove_all_face_samples_after_training(self):
+        if not self.faces_dir.exists():
+            print("Pasta de amostras faciais não encontrada.")
+            return
+
+        users = self.list_face_users()
+
+        if not users:
+            print("Nenhuma amostra facial encontrada para remoção.")
+            return
+
+        print("\nUsuários com amostras faciais:")
+        for user in users:
+            user_dir = self.faces_dir / user
+            sample_count = len(list(user_dir.glob("*.jpg")))
+            print(f"  - {user}: {sample_count} imagens")
+
+        print("\nATENÇÃO: esta ação remove as imagens brutas, mas mantém o modelo treinado.")
+        print("Após remover, para retreinar será necessário capturar novas imagens.")
+
+        if not self.confirm_typed("APAGAR AMOSTRAS"):
+            return
+
+        for user in users:
+            user_dir = self.faces_dir / user
+            if user_dir.exists():
+                shutil.rmtree(user_dir)
+
+        self.faces_dir.mkdir(parents=True, exist_ok=True)
+
+        print("Amostras faciais brutas apagadas com sucesso.")
 
     def test_recognizer(self):
         self.clear_screen()
@@ -236,21 +338,33 @@ class PresenceAgentAdminMenu:
         os.startfile(logs[0])
         self.pause("Log mais recente aberto. Pressione ENTER para continuar...")
 
+    
     def stop_running_agent(self):
         self.clear_screen()
         self.print_section("Encerrar PresenceAgent")
 
-        print("Este comando encerra processos pythonw.exe que estejam executando main.py deste projeto.")
+        print(
+            "Este comando encerra processos python.exe/pythonw.exe "
+            "que estejam executando main.py deste projeto."
+        )
 
         if not self.confirm("Encerrar PresenceAgent em execução?"):
             return
 
+        project_name = self.project_root.name
+
         command = (
-            "Get-CimInstance Win32_Process -Filter \"name = 'pythonw.exe'\" | "
-            "Where-Object { $_.CommandLine -like '*SISTEMA_RECONHECIMENTO_MCOM*main.py*' } | "
-            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force; "
-            "Write-Host \"PresenceAgent encerrado: $($_.ProcessId)\" }"
+            "Get-CimInstance Win32_Process | "
+            "Where-Object { "
+            "($_.Name -eq 'pythonw.exe' -or $_.Name -eq 'python.exe') "
+            f"-and $_.CommandLine -like '*{project_name}*main.py*' "
+            "} | "
+            "ForEach-Object { "
+            "Stop-Process -Id $_.ProcessId -Force; "
+            "Write-Host \"PresenceAgent encerrado: $($_.ProcessId)\" "
+            "}"
         )
+
 
         subprocess.run(
             ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
@@ -358,14 +472,21 @@ class PresenceAgentAdminMenu:
 
         if not tool_path.exists():
             print(f"Ferramenta não encontrada: {tool_path}")
-            return
+            return False
 
         command = [sys.executable, str(tool_path)] + args
+
         print("\nExecutando:")
         print(" ".join(command))
         print()
 
-        subprocess.run(command, cwd=self.project_root)
+        result = subprocess.run(command, cwd=self.project_root)
+
+        if result.returncode != 0:
+            print(f"\nFerramenta terminou com erro. Código: {result.returncode}")
+            return False
+
+        return True
 
     def list_face_users(self):
         if not self.faces_dir.exists():

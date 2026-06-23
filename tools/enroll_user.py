@@ -11,7 +11,7 @@ def parse_args():
     parser.add_argument(
         "--user",
         required=True,
-        help="Nome do usuário a ser cadastrado. Exemplo: filipe",
+        help="Identificador do usuário a ser cadastrado. Exemplo: login.institucional",
     )
 
     parser.add_argument(

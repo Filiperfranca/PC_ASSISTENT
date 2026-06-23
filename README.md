@@ -1,773 +1,860 @@
-# PresenceAgent
+# PresenceAgent — MCOM
 
-Agente local de presença, segurança e inicialização inteligente para Windows.
+> Agente local de presença, reconhecimento facial e segurança contextual para estações Windows do Ministério das Comunicações.
 
-O **PresenceAgent** usa a webcam do computador para detectar presença, reconhecer o usuário autorizado, reagir a pessoas desconhecidas, bloquear a estação quando necessário e executar uma rotina inicial personalizada quando o usuário autorizado é reconhecido.
+Este repositório documenta o **PresenceAgent**, uma solução local em validação no âmbito do **Ministério das Comunicações (MCOM)** para apoio à segurança da estação de trabalho, automação de início de expediente e controle contextual de presença.
 
-> Projeto desenvolvido para uso local/corporativo, com foco em privacidade: o processamento ocorre na máquina e os dados faciais/modelos ficam armazenados localmente.
+Este documento é direcionado à **equipe de TI, suporte técnico, segurança da informação e gestores responsáveis pela avaliação institucional da solução**.
 
----
-
-## Visão geral
-
-O PresenceAgent foi criado para transformar o PC em uma estação mais inteligente:
-
-- Detecta se existe rosto na câmera.
-- Identifica se o rosto é do usuário autorizado.
-- Diferencia usuário autorizado, rosto desconhecido e identidade incerta.
-- Detecta múltiplos rostos e pode perguntar se deseja bloquear a estação.
-- Bloqueia o Windows automaticamente em cenários configurados.
-- Executa uma rotina de inicialização após reconhecer o usuário autorizado.
-- Abre aplicativos e sites configurados.
-- Mantém logs e health checks.
-- Possui janela de debug opcional.
-- Possui integração Teams preparada por provider, mas Graph pode depender de políticas do tenant.
+Ele não é um guia para alteração de código-fonte. O código da aplicação já possui uma estrutura funcional. As orientações abaixo tratam de **entendimento, operação, cadastro, treinamento, segurança, dados tratados, procedimentos e próximos passos institucionais**.
 
 ---
 
-## Funcionalidades principais
+## 1. Visão geral
 
-### Presença
+O **PresenceAgent** é executado localmente na estação Windows do usuário autorizado. Ele utiliza a webcam da estação para detectar presença, reconhecer o usuário autorizado e executar ações locais de acordo com regras configuradas.
 
-O agente detecta presença com base no rosto visível na webcam.
+Em termos práticos, o agente permite:
 
-Eventos principais:
+- identificar se há uma pessoa diante da estação;
+- reconhecer se essa pessoa é o usuário autorizado;
+- classificar leituras como autorizado, incerto ou desconhecido;
+- abrir aplicativos institucionais após reconhecimento do usuário autorizado;
+- bloquear a estação em cenários configurados de ausência ou risco;
+- registrar logs operacionais para diagnóstico;
+- permitir cadastro, retreinamento e limpeza de dados biométricos por meio de menu administrativo.
 
-- `USER_PRESENT`: usuário presente.
-- `USER_AWAY`: usuário ausente.
-
-A ausência não é marcada imediatamente. O sistema usa tempos de tolerância para evitar falso positivo quando o usuário apenas olha para o lado, abaixa a cabeça ou a câmera perde o rosto por alguns segundos.
+A solução foi construída para funcionar **localmente**, sem depender de serviço externo para o reconhecimento facial.
 
 ---
 
-### Reconhecimento facial
+## 2. Escopo atual no MCOM
 
-O reconhecimento usa OpenCV LBPH via `opencv-contrib-python`.
+O PresenceAgent, no estado atual, deve ser tratado como:
+
+```txt
+MVP técnico funcional
+POC institucional controlada
+base para avaliação de segurança, LGPD e operação de TI
+```
+
+Ele ainda não deve ser considerado uma solução institucional final para distribuição ampla sem as próximas etapas de governança, proteção de armazenamento, criptografia, ACL, auditoria e validação formal.
+
+### Estado atual
+
+```txt
+Reconhecimento facial local: funcional
+Cadastro facial local: funcional
+Treinamento local: funcional
+Menu administrativo: funcional
+Execução automática no Windows: funcional via Agendador de Tarefas
+Startup Assistant: funcional
+Apagamento de imagens brutas pós-treinamento: disponível via menu
+Logs operacionais: funcionais
+Criptografia do modelo biométrico: planejada
+Armazenamento em ProgramData com ACL institucional: planejado
+Auditoria administrativa em SQLite: planejada
+Homologação LGPD institucional: pendente
+```
+
+---
+
+## 3. O que o agente faz
+
+### 3.1 Detecção de presença
+
+O agente monitora a webcam para identificar se existe um rosto diante da estação.
+
+A presença física é tratada separadamente da identidade. Isso significa que o sistema pode detectar que existe alguém na frente da máquina sem necessariamente considerar essa pessoa como usuário autorizado.
+
+### 3.2 Reconhecimento do usuário autorizado
+
+O reconhecimento facial atual utiliza OpenCV LBPH.
 
 O sistema trabalha com três faixas:
 
 ```txt
-confidence <= RECOGNITION_AUTHORIZED_THRESHOLD
+Verde / autorizado
+    leitura compatível com o usuário autorizado
+
+Amarelo / incerto
+    leitura insuficiente para autorizar e insuficiente para acusar desconhecido
+
+Vermelho / desconhecido
+    leitura considerada incompatível com o usuário autorizado
+```
+
+No modelo LBPH, quanto menor o valor de `confidence`, melhor a correspondência.
+
+Configuração validada após retreinamento recente:
+
+```env
+RECOGNITION_AUTHORIZED_THRESHOLD=55
+RECOGNITION_UNKNOWN_THRESHOLD=65
+```
+
+Interpretação operacional:
+
+```txt
+confidence <= 55
     usuário autorizado
 
-RECOGNITION_AUTHORIZED_THRESHOLD < confidence < RECOGNITION_UNKNOWN_THRESHOLD
+56 <= confidence <= 64
     identidade incerta
 
-confidence >= RECOGNITION_UNKNOWN_THRESHOLD
+confidence >= 65
     desconhecido
 ```
 
-Importante: no LBPH, **quanto menor o valor de confidence, melhor o match**.
+A identidade incerta é neutra: não autoriza o usuário e não gera bloqueio automaticamente.
+
+### 3.3 Startup Assistant
+
+Após reconhecer o usuário autorizado, o agente pode abrir aplicativos definidos pela configuração local, como Teams, navegador, sistemas internos ou páginas institucionais.
+
+Esse fluxo roda uma vez por sessão, conforme configuração.
+
+### 3.4 Bloqueio da estação
+
+O agente pode bloquear a estação Windows quando:
+
+- o usuário é considerado ausente por tempo configurado;
+- uma pessoa desconhecida é detectada de forma persistente;
+- há múltiplos rostos e o usuário confirma o bloqueio, quando aplicável.
+
+O bloqueio por desconhecido só deve permanecer habilitado após calibração adequada do modelo facial.
 
 ---
 
-### Segurança
+## 4. O que o agente não faz
 
-O SecurityService lida com situações como:
+O PresenceAgent, no estado atual:
 
-- pessoa desconhecida sozinha na câmera;
-- múltiplos rostos;
-- identidade incerta;
-- confirmação antes de ação crítica;
-- bloqueio do Windows por pessoa desconhecida, se habilitado.
+- não envia imagens faciais para nuvem;
+- não utiliza serviço externo para reconhecimento facial;
+- não grava vídeo;
+- não salva frames durante a execução normal;
+- não substitui política institucional de segurança;
+- não substitui controles de acesso do Windows;
+- não é, sozinho, uma solução completa de conformidade LGPD;
+- não deve ser administrado por usuário comum.
 
-Fluxo simplificado:
+---
+
+## 5. Execução no Windows
+
+O agente principal é executado por:
 
 ```txt
-Pessoa desconhecida confirmada
-        ↓
-SECURITY_ALERT
-        ↓
-Lock do Windows, se UNKNOWN_LOCK_ENABLED=True
+main.py
 ```
 
-Para múltiplos rostos:
+No ambiente MCOM atual, a inicialização automática é feita pelo **Agendador de Tarefas do Windows**, executando:
 
 ```txt
-Mais de um rosto detectado
-        ↓
-Confirma por alguns segundos
-        ↓
-Pergunta se deseja bloquear a estação
+.venv\Scripts\pythonw.exe main.py
 ```
 
----
+O uso de `pythonw.exe` permite execução em segundo plano, sem janela de terminal.
 
-### Startup Assistant
+### Observação sobre dois processos pythonw.exe
 
-Quando o PresenceAgent inicia, ele espera reconhecer o usuário autorizado.
-
-Depois disso, ele pode:
-
-- dar uma saudação;
-- abrir Teams;
-- abrir SouGov no Chrome;
-- abrir Brave com perfil MCOM;
-- abrir Brave com perfil Pessoal;
-- abrir outros apps/sites configurados.
-
-Esse fluxo roda uma vez por sessão, se configurado.
-
----
-
-### Integração Teams
-
-O projeto possui uma camada de integração com Teams baseada em providers:
-
-- `mock`: apenas simula/loga a alteração de presença.
-- `graph`: usa Microsoft Graph para presença, quando permitido pelo tenant.
-
-A integração oficial por Microsoft Graph exige permissões como `Presence.ReadWrite` e pode ser bloqueada por políticas de Conditional Access do tenant. O método oficial `presence: setPresence` usa uma sessão da aplicação com `sessionId`, `availability`, `activity` e `expirationDuration`, e pode demorar alguns minutos para refletir no cliente Teams por causa do polling do Teams. citeturn58search1turn58search2
-
-No ambiente atual, caso o Graph seja bloqueado por Conditional Access, use:
-
-```env
-ENABLE_TEAMS_INTEGRATION=False
-TEAMS_PROVIDER=mock
-```
-
----
-
-## Estrutura do projeto
+Em ambiente virtual Python no Windows, pode aparecer uma cadeia de processos semelhante a:
 
 ```txt
-SISTEMA_RECONHECIMENTO_MCOM/
-│
-├── app/
-│   ├── core/
-│   │   ├── config.py
-│   │   ├── event_bus.py
-│   │   ├── events.py
-│   │   ├── logger.py
-│   │   ├── state_manager.py
-│   │   └── states.py
-│   │
-│   ├── services/
-│   │   ├── camera_service.py
-│   │   ├── debug_window_service.py
-│   │   ├── detection_service.py
-│   │   ├── health_service.py
-│   │   ├── presence_service.py
-│   │   ├── prompt_service.py
-│   │   ├── recognition_service.py
-│   │   ├── security_service.py
-│   │   ├── startup_assistant_service.py
-│   │   ├── system_service.py
-│   │   └── teams_presence_service.py
-│   │
-│   ├── integrations/
-│   │   ├── app_launcher.py
-│   │   ├── graph_teams_provider.py
-│   │   ├── mock_teams_provider.py
-│   │   ├── teams_provider.py
-│   │   └── windows_integration.py
-│   │
-│   ├── config/
-│   │   ├── startup_apps.example.json
-│   │   └── startup_apps.json
-│   │
-│   └── data/
-│       ├── faces/
-│       └── models/
-│
-├── docs/
-├── logs/
-├── scripts/
-├── tests/
-├── tools/
-│   ├── enroll_user.py
-│   ├── train_recognizer.py
-│   └── test_recognizer.py
-│
-├── .env
-├── .env.example
-├── .gitignore
-├── main.py
-├── README.md
-└── requirements.txt
+.venv\Scripts\pythonw.exe
+    ↓
+Python314\pythonw.exe
 ```
 
----
+Isso não significa, necessariamente, duas instâncias reais do PresenceAgent. O critério correto de validação é o log: deve existir apenas uma sequência real de inicialização do agente.
 
-## Requisitos
-
-- Windows 10 ou superior.
-- Webcam funcional.
-- Python instalado.
-- Git opcional, mas recomendado.
-- Permissão local para acessar a câmera.
-- Para reconhecimento facial LBPH: `opencv-contrib-python`.
-
----
-
-## Instalação
-
-### 1. Clonar ou baixar o projeto
-
-Com Git:
-
-```powershell
-git clone <URL_DO_REPOSITORIO>
-cd SISTEMA_RECONHECIMENTO_MCOM
-```
-
-Ou baixe o ZIP do projeto, extraia e abra a pasta no terminal.
-
----
-
-### 2. Criar ambiente virtual
-
-```powershell
-py -m venv .venv
-```
-
-Ativar:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Se o PowerShell bloquear execução de script:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-```
-
----
-
-### 3. Instalar dependências
-
-```powershell
-pip install -r requirements.txt
-```
-
-Se estiver montando do zero, as dependências principais são:
-
-```powershell
-pip install opencv-contrib-python python-dotenv pytest msal requests
-```
-
----
-
-### 4. Criar `.env`
-
-Copie o exemplo:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Depois ajuste o arquivo `.env` conforme o ambiente local.
-
----
-
-## Configuração essencial
-
-### Câmera
-
-```env
-CAMERA_INDEX=0
-CAMERA_BACKEND=DSHOW
-FRAME_WIDTH=640
-FRAME_HEIGHT=480
-TARGET_FPS=10
-```
-
-No Windows, `DSHOW` costuma ser mais estável que o backend padrão do OpenCV.
-
----
-
-### Presença
-
-```env
-FACE_LOST_GRACE_SECONDS=12
-USER_AWAY_SECONDS=30
-USER_PRESENT_CONFIRM_SECONDS=3
-```
-
-Significado:
-
-- `FACE_LOST_GRACE_SECONDS`: tolerância para perda temporária do rosto.
-- `USER_AWAY_SECONDS`: tempo sem rosto para marcar ausência.
-- `USER_PRESENT_CONFIRM_SECONDS`: tempo com rosto para confirmar presença.
-
----
-
-### Reconhecimento facial
-
-```env
-ENABLE_FACE_RECOGNITION=True
-AUTHORIZED_USER=filipe
-RECOGNITION_AUTHORIZED_THRESHOLD=55
-RECOGNITION_UNKNOWN_THRESHOLD=65
-RECOGNITION_PROCESS_EVERY_N_EVENTS=1
-MIN_AUTHORIZED_FACE_WIDTH=150
-```
-
-Faixa recomendada atual:
+O agente possui proteção de instância única via mutex do Windows:
 
 ```txt
-<= 55  autorizado
-56–64  incerto
->= 65  desconhecido
-```
-
-Esses valores devem ser recalibrados se mudar câmera, iluminação ou dataset.
-
----
-
-### Segurança
-
-```env
-ENABLE_SECURITY_SERVICE=True
-UNKNOWN_LOCK_ENABLED=True
-UNKNOWN_CONFIRM_SECONDS=2
-UNKNOWN_EVENT_STREAK=2
-MIN_SECURITY_FACE_WIDTH=150
-AUTHORIZED_GRACE_SECONDS=5
-```
-
-Para testar sem bloquear o Windows, use:
-
-```env
-UNKNOWN_LOCK_ENABLED=False
+Single instance mutex adquirido com sucesso: Local\PresenceAgent
 ```
 
 ---
 
-### Lock do Windows
+## 6. Menu administrativo
 
-```env
-ENABLE_SYSTEM_ACTIONS=True
-ENABLE_WINDOWS_LOCK=True
-WINDOWS_LOCK_COOLDOWN_SECONDS=120
-```
-
-O lock usa a API do Windows para bloquear a estação. O desbloqueio continua sendo manual, por PIN/senha/Windows Hello.
-
----
-
-### Debug visual
-
-Para uso diário:
-
-```env
-ENABLE_DEBUG_WINDOW=False
-DEBUG_MODE=False
-LOG_LEVEL=INFO
-```
-
-Para depuração:
-
-```env
-ENABLE_DEBUG_WINDOW=True
-DEBUG_MODE=True
-LOG_LEVEL=INFO
-```
-
----
-
-### Startup Assistant
-
-```env
-ENABLE_STARTUP_ASSISTANT=True
-STARTUP_REQUIRE_AUTHORIZED_USER=True
-STARTUP_RUN_ONCE_PER_SESSION=True
-STARTUP_GREETING_ENABLED=True
-STARTUP_GREETING_MODE=log
-STARTUP_GREETING_MESSAGE=Olá Filipe, bem-vindo de volta.
-STARTUP_OPEN_APPS_ENABLED=True
-STARTUP_APPS_CONFIG=app/config/startup_apps.json
-STARTUP_APP_DELAY_SECONDS=1.5
-```
-
----
-
-## Configuração dos apps de inicialização
-
-Arquivo real:
+O menu administrativo fica em:
 
 ```txt
-app/config/startup_apps.json
+tools/admin_menu.py
 ```
+
+Ele é destinado à TI ou suporte autorizado.
+
+Executar:
+
+```powershell
+python tools/admin_menu.py
+```
+
+O menu não inicia com o Windows e não é utilizado pelo usuário comum.
+
+### Funções disponíveis
+
+```txt
+1. Ver status do ambiente
+2. Cadastrar / atualizar rosto do usuário
+3. Treinar modelo facial
+4. Testar reconhecedor facial
+5. Validar startup_apps.json
+6. Abrir pasta de logs
+7. Abrir log mais recente
+8. Encerrar PresenceAgent em execução
+9. Remover amostras faciais de um usuário
+10. Apagar TODOS os dados biométricos locais
+11. Exibir relatório de prontidão LGPD
+```
+
+### Identificador do usuário
+
+O cadastro facial deve utilizar um identificador institucional, por exemplo:
+
+```txt
+login institucional
+matrícula
+identificador interno definido pela TI
+```
+
+Evitar uso de nome completo no caminho dos arquivos.
 
 Exemplo:
 
-```json
-[
-    {
-        "name": "Microsoft Teams",
-        "enabled": true,
-        "type": "uri",
-        "target": "msteams:"
-    },
-    {
-        "name": "SouGov - Chrome",
-        "enabled": true,
-        "type": "process",
-        "target": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-        "args": [
-            "https://sougov.sigepe.gov.br/sougov/"
-        ]
-    },
-    {
-        "name": "Brave - Perfil MCOM",
-        "enabled": true,
-        "type": "process",
-        "target": "C:\\Users\\filipe.franca\\AppData\\Local\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
-        "args": [
-            "--profile-directory=Default"
-        ]
-    },
-    {
-        "name": "Brave - Perfil Pessoal",
-        "enabled": true,
-        "type": "process",
-        "target": "C:\\Users\\filipe.franca\\AppData\\Local\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
-        "args": [
-            "--profile-directory=Profile 1"
-        ]
-    }
-]
+```txt
+filipe.franca
+joao.silva
+matricula123456
 ```
 
-Tipos suportados:
-
-- `uri`: abre protocolo do Windows, como `msteams:`.
-- `process`: abre executável com argumentos.
-- `path`: abre pasta ou arquivo.
+Após o cadastro, o menu pode atualizar o valor `AUTHORIZED_USER` no `.env` para garantir que o agente reconheça o identificador correto.
 
 ---
 
-## Cadastro facial do usuário autorizado
+## 7. Cadastro facial
 
-### 1. Capturar imagens
+O cadastro é feito pela TI por meio do menu administrativo ou, quando necessário, por script operacional já existente.
+
+### Pelo menu
 
 ```powershell
-python tools/enroll_user.py --user filipe --samples 180
+python tools/admin_menu.py
 ```
 
-Durante a captura:
-
-- fique de frente;
-- olhe levemente para esquerda e direita;
-- varie a distância;
-- use iluminação semelhante ao uso real;
-- evite imagens borradas ou muito escuras.
-
-As imagens são salvas em:
+Selecionar:
 
 ```txt
-app/data/faces/filipe/
+2. Cadastrar / atualizar rosto do usuário
 ```
 
-Esses dados são biométricos e não devem ser versionados.
+Informar o identificador institucional do usuário autorizado.
+
+Quantidade recomendada de amostras:
+
+```txt
+300 imagens
+```
+
+### Orientações para captura
+
+A qualidade do cadastro influencia diretamente a segurança do sistema.
+
+Capturar:
+
+```txt
+rosto de frente
+meio de lado
+olhando à esquerda
+olhando à direita
+olhando levemente para baixo
+olhando levemente para cima
+iluminação real da estação
+expressões naturais
+mão próxima ao rosto, sem cobrir completamente
+variações reais de uso diário
+```
+
+Evitar:
+
+```txt
+imagem muito escura
+imagem borrada
+rosto cortado
+rosto muito pequeno
+mão cobrindo metade do rosto
+outras pessoas no enquadramento
+```
+
+### Resultado esperado após bom treinamento
+
+Com treinamento adequado, o comportamento esperado é:
+
+```txt
+Usuário autorizado em diferentes ângulos: confidence abaixo de 55
+Pessoa desconhecida: confidence acima de 65
+```
 
 ---
 
-### 2. Treinar o modelo
+## 8. Treinamento do modelo
 
-```powershell
-python tools/train_recognizer.py
-```
+O treinamento gera o modelo usado pelo agente para reconhecer o usuário autorizado.
 
-Isso gera:
+Arquivos gerados atualmente:
 
 ```txt
 app/data/models/lbph_model.yml
 app/data/models/labels.json
 ```
 
----
+Após o treinamento, o menu administrativo oferece a opção de apagar as imagens faciais brutas.
 
-### 3. Testar reconhecimento
+Essa limpeza é recomendada como prática de segurança.
 
-```powershell
-python tools/test_recognizer.py
-```
-
-Observe os valores de confidence:
+Fluxo recomendado:
 
 ```txt
-Filipe de frente: idealmente baixo
-Filipe de lado: um pouco maior
-Pessoa desconhecida: maior que o threshold de unknown
+1. Cadastrar rosto
+2. Treinar modelo
+3. Testar reconhecimento
+4. Validar comportamento
+5. Apagar imagens brutas
+6. Manter apenas o modelo treinado
 ```
 
-Lembrete:
+---
+
+## 9. Dados tratados
+
+### 9.1 Imagens faciais brutas
+
+Durante o cadastro, imagens faciais são salvas temporariamente em:
 
 ```txt
-No LBPH, menor confidence = melhor match.
+app/data/faces/<identificador>/
 ```
 
----
+Essas imagens são sensíveis e devem ser removidas após o treinamento e validação do modelo.
 
-## Execução manual
+### 9.2 Modelo facial treinado
 
-Com a venv ativa:
-
-```powershell
-python main.py
-```
-
-Encerrar:
+O modelo treinado fica em:
 
 ```txt
-CTRL+C
+app/data/models/lbph_model.yml
+app/data/models/labels.json
 ```
 
----
+O modelo não é uma fotografia visualizável do rosto, mas é derivado biométrico e deve continuar sendo tratado como dado sensível.
 
-## Execução com o Windows
+### 9.3 Logs
 
-### 1. Criar script de inicialização
-
-Crie:
-
-```txt
-scripts/start_agent.ps1
-```
-
-Conteúdo:
-
-```powershell
-Set-Location "C:\Users\filipe.franca\Dev\Pessoal\SISTEMA_RECONHECIMENTO_MCOM"
-
-.\.venv\Scripts\python.exe main.py
-```
-
-Teste:
-
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File ".\scripts\start_agent.ps1"
-```
-
----
-
-### 2. Criar tarefa agendada
-
-```powershell
-$ProjectPath = "C:\Users\filipe.franca\Dev\Pessoal\SISTEMA_RECONHECIMENTO_MCOM"
-$ScriptPath = "$ProjectPath\scripts\start_agent.ps1"
-
-$Action = New-ScheduledTaskAction `
-    -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`"" `
-    -WorkingDirectory $ProjectPath
-
-$Trigger = New-ScheduledTaskTrigger -AtLogOn
-
-$Settings = New-ScheduledTaskSettingsSet `
-    -AllowStartIfOnBatteries `
-    -DontStopIfGoingOnBatteries `
-    -StartWhenAvailable
-
-Register-ScheduledTask `
-    -TaskName "PresenceAgent" `
-    -Action $Action `
-    -Trigger $Trigger `
-    -Settings $Settings `
-    -Description "Inicia o PresenceAgent ao fazer logon no Windows." `
-    -Force
-```
-
-O Windows também permite configurar apps de inicialização pelo `shell:startup`, mas o Agendador de Tarefas é mais controlável para esse projeto. citeturn76search38turn76search32
-
----
-
-### 3. Testar tarefa
-
-```powershell
-Start-ScheduledTask -TaskName "PresenceAgent"
-```
-
-Ver status:
-
-```powershell
-Get-ScheduledTask -TaskName "PresenceAgent"
-Get-ScheduledTaskInfo -TaskName "PresenceAgent"
-```
-
-Parar:
-
-```powershell
-Stop-ScheduledTask -TaskName "PresenceAgent"
-```
-
-Remover:
-
-```powershell
-Unregister-ScheduledTask -TaskName "PresenceAgent" -Confirm:$false
-```
-
----
-
-## Logs
-
-Os logs são salvos em:
+Logs ficam em:
 
 ```txt
 logs/
 ```
 
-Exemplo de eventos:
+Eles podem conter:
 
 ```txt
-USER_PRESENT
-USER_AWAY
-SECURITY_ALERT
-MULTIPLE_FACES_CONFIRMED
-HealthCheck
-CameraService iniciado
-StartupAssistant concluído
+horário de execução
+estado do agente
+eventos de presença
+eventos de reconhecimento
+valores de confidence
+eventos de segurança
+erros técnicos
 ```
 
-O sistema não salva fotos ou vídeos durante o uso normal. Imagens só são salvas durante o processo explícito de cadastro facial.
+Logs não devem conter:
+
+```txt
+fotos
+frames
+vídeos
+imagens da webcam
+```
 
 ---
 
-## Privacidade e segurança
+## 10. Segurança e LGPD
 
-- O processamento é local.
-- Os frames da webcam ficam em memória durante o uso normal.
-- O sistema não grava vídeo.
-- O sistema não salva fotos durante execução normal.
-- Dados faciais e modelos ficam em `app/data/`.
-- `app/data/faces/` e `app/data/models/` devem ficar no `.gitignore`.
-- O `.env` não deve ser versionado.
+O PresenceAgent utiliza reconhecimento facial e, portanto, trata dados biométricos.
+
+Para uso institucional, isso exige avaliação de:
+
+```txt
+finalidade
+necessidade
+proporcionalidade
+base legal
+controle de acesso
+retenção
+exclusão
+transparência
+auditoria
+procedimento de incidente
+```
+
+### Situação atual
+
+```txt
+Processamento local: sim
+Envio para nuvem: não, por padrão
+Imagens brutas pós-treino: podem ser apagadas pelo menu
+Modelo criptografado: ainda não
+ACL institucional automatizada: ainda não
+Auditoria administrativa persistente: ainda não
+```
+
+### Evolução planejada
+
+```txt
+Mover dados para C:\ProgramData\PresenceAgent
+Aplicar ACL restrita
+Criptografar modelo com DPAPI
+Manter somente arquivos .enc
+Registrar ações administrativas em audit.sqlite
+Separar logs operacionais e logs sensíveis
+Definir política de retenção
+Formalizar documentação LGPD
+```
 
 ---
 
-## `.gitignore` recomendado
+## 11. Armazenamento atual
 
-```gitignore
-# Python
-__pycache__/
-*.pyc
-*.pyo
+No MVP atual, os dados ficam dentro da pasta do projeto:
 
-# Virtual environments
-venv/
-.venv/
-
-# Environment
-.env
-
-# Logs
-logs/
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Biometric/local data
+```txt
 app/data/faces/
 app/data/models/
+app/data/runtime/
+logs/
+```
 
-# Local app config
+Para avaliação institucional ampla, a proposta futura é migrar para:
+
+```txt
+C:\ProgramData\PresenceAgent\
+```
+
+Estrutura futura prevista:
+
+```txt
+C:\ProgramData\PresenceAgent\
+├── config\
+├── models\
+├── logs\
+├── runtime\
+├── audit\
+└── temp\
+```
+
+---
+
+## 12. Apagamento de imagens brutas
+
+O menu administrativo já permite apagar imagens brutas após treinamento.
+
+Essa ação remove:
+
+```txt
+app/data/faces/<usuario>/*.jpg
+```
+
+E mantém:
+
+```txt
+app/data/models/lbph_model.yml
+app/data/models/labels.json
+```
+
+Isso reduz a exposição dos dados mais diretamente identificáveis.
+
+Importante: o modelo treinado ainda deve ser protegido.
+
+---
+
+## 13. Inicialização automática
+
+A inicialização automática deve ser configurada pela TI no Agendador de Tarefas.
+
+Configuração recomendada:
+
+```txt
+Nome da tarefa:
+PresenceAgent
+
+Disparador:
+Ao fazer logon do usuário autorizado
+
+Programa:
+<PASTA_DO_PROJETO>\.venv\Scripts\pythonw.exe
+
+Argumentos:
+main.py
+
+Iniciar em:
+<PASTA_DO_PROJETO>
+
+Regra de múltiplas instâncias:
+Não iniciar uma nova instância
+```
+
+A tarefa deve ser configurada para o usuário específico da estação, não para todos os usuários.
+
+---
+
+## 14. Operação diária
+
+### Usuário final
+
+O usuário final não deve executar comandos manualmente.
+
+Fluxo esperado:
+
+```txt
+Usuário faz logon no Windows
+↓
+Agendador inicia PresenceAgent
+↓
+Agente reconhece usuário autorizado
+↓
+Startup Assistant abre aplicativos configurados
+↓
+Agente monitora presença e segurança
+```
+
+### TI / suporte autorizado
+
+A TI utiliza o menu administrativo quando precisar:
+
+```txt
+cadastrar usuário
+recadastrar rosto
+treinar modelo
+testar reconhecimento
+limpar imagens brutas
+apagar dados biométricos locais
+consultar logs
+encerrar agente em execução
+```
+
+---
+
+## 15. Procedimentos operacionais
+
+### 15.1 Recadastro de rosto
+
+```txt
+1. Abrir menu administrativo
+2. Cadastrar / atualizar rosto do usuário
+3. Treinar modelo facial
+4. Testar reconhecedor
+5. Validar confidence do usuário e de pessoa não autorizada
+6. Apagar imagens brutas após validação
+7. Reiniciar PresenceAgent
+```
+
+### 15.2 Troca de computador
+
+Procedimento recomendado:
+
+```txt
+1. Apagar dados biométricos locais no computador antigo
+2. Instalar/configurar PresenceAgent no novo computador
+3. Cadastrar novamente o usuário autorizado
+4. Treinar novo modelo local
+5. Apagar imagens brutas
+6. Configurar Agendador de Tarefas
+```
+
+Evitar copiar modelos biométricos entre computadores sem procedimento institucional aprovado.
+
+### 15.3 Desativação
+
+```txt
+1. Encerrar PresenceAgent
+2. Apagar dados biométricos locais pelo menu
+3. Remover tarefa do Agendador, se aplicável
+4. Registrar ação conforme procedimento institucional
+```
+
+---
+
+## 16. Configurações principais
+
+Arquivo:
+
+```txt
+.env
+```
+
+Principais chaves:
+
+```env
+AUTHORIZED_USER=identificador.institucional
+
+ENABLE_FACE_RECOGNITION=True
+RECOGNITION_AUTHORIZED_THRESHOLD=55
+RECOGNITION_UNKNOWN_THRESHOLD=65
+MIN_AUTHORIZED_FACE_WIDTH=150
+
+ENABLE_SECURITY_SERVICE=True
+UNKNOWN_LOCK_ENABLED=True
+UNKNOWN_CONFIRM_SECONDS=3
+UNKNOWN_EVENT_STREAK=3
+AUTHORIZED_GRACE_SECONDS=10
+
+ENABLE_WINDOWS_LOCK=True
+ENABLE_STARTUP_ASSISTANT=True
+ENABLE_DEBUG_WINDOW=False
+LOG_LEVEL=INFO
+```
+
+Durante calibração, a TI pode manter:
+
+```env
+UNKNOWN_LOCK_ENABLED=False
+ENABLE_DEBUG_WINDOW=True
+```
+
+Para uso normal:
+
+```env
+UNKNOWN_LOCK_ENABLED=True
+ENABLE_DEBUG_WINDOW=False
+```
+
+---
+
+## 17. Logs e diagnóstico
+
+Abrir menu:
+
+```powershell
+python tools/admin_menu.py
+```
+
+Opções úteis:
+
+```txt
+6. Abrir pasta de logs
+7. Abrir log mais recente
+```
+
+Verificar no log:
+
+```txt
+Single instance mutex adquirido com sucesso
+CameraService iniciado com sucesso
+RecognitionService iniciado com sucesso
+PresenceAgent rodando
+```
+
+Eventos de interesse:
+
+```txt
+IDENTITY_RECOGNIZED
+IDENTITY_UNCERTAIN
+IDENTITY_UNKNOWN
+SECURITY_SUSPICIOUS
+SECURITY_ALERT
+USER_PRESENT
+USER_AWAY
+```
+
+---
+
+## 18. Boas práticas antes de push no Git
+
+Nunca enviar para o repositório:
+
+```txt
+.env
+logs/
+app/data/faces/
+app/data/models/
+app/data/runtime/
 app/config/startup_apps.json
 ```
 
----
+Esses itens podem conter configuração local, logs ou dados biométricos.
 
-## Troubleshooting
-
-### Webcam abre, mas não captura frame
-
-Use:
-
-```env
-CAMERA_BACKEND=DSHOW
-```
-
-No Windows, isso costuma resolver problemas do backend MSMF.
-
----
-
-### Chrome/Brave não abrem
-
-Use caminho completo do `.exe` no `startup_apps.json`.
-
-Teste:
-
-```powershell
-Test-Path "C:\Program Files\Google\Chrome\Application\chrome.exe"
-Test-Path "C:\Users\filipe.franca\AppData\Local\BraveSoftware\Brave-Browser\Application\brave.exe"
-```
-
----
-
-### Pessoa desconhecida sendo reconhecida como Filipe
-
-Ajuste:
-
-```env
-RECOGNITION_AUTHORIZED_THRESHOLD=55
-RECOGNITION_UNKNOWN_THRESHOLD=65
-```
-
-Se ainda ocorrer, reduza o authorized threshold:
-
-```env
-RECOGNITION_AUTHORIZED_THRESHOLD=50
-```
-
-Depois recapture e retreine o dataset facial.
-
----
-
-### Usuário autorizado caindo como incerto
-
-Aumente levemente:
-
-```env
-RECOGNITION_AUTHORIZED_THRESHOLD=58
-```
-
-Ou capture mais imagens do usuário autorizado com variações realistas.
-
----
-
-### Graph/Teams bloqueado
-
-Se aparecer erro de Conditional Access, use:
-
-```env
-ENABLE_TEAMS_INTEGRATION=False
-TEAMS_PROVIDER=mock
-```
-
-O erro AADSTS/53003 indica que o login foi aceito, mas a política de Conditional Access bloqueou a emissão do token. citeturn65search23turn65search28
-
----
-
-## Roadmap
-
-Possíveis evoluções:
-
-- Interface de configuração.
-- Empacotamento como app Windows.
-- Watchdog e auto-restart.
-- Rotação automática de logs.
-- Migração de LBPH para embeddings faciais modernos.
-- Dashboard local.
-- Integração Teams via Graph, caso o tenant permita.
-- Configuração visual de apps de startup.
-
----
-
-## Status atual
+O repositório deve conter apenas exemplos e código:
 
 ```txt
-MVP operacional
-Presença: OK
-Reconhecimento facial: OK
-Segurança contextual: OK
-Startup Assistant: OK
-Teams Graph: bloqueado por política do tenant
+.env.example
+app/config/startup_apps.example.json
+README.md
+docs/
+app/
+tools/
 ```
+
+Verificar antes de push:
+
+```powershell
+git status
+```
+
+---
+
+## 19. Troubleshooting
+
+### Agente não inicia
+
+Verificar:
+
+```txt
+Agendador de Tarefas
+Programa pythonw.exe
+Argumento main.py
+Campo Iniciar em
+Logs
+```
+
+### Câmera não abre
+
+Verificar:
+
+```txt
+CAMERA_INDEX
+CAMERA_BACKEND=DSHOW
+outro aplicativo usando webcam
+permissão de câmera do Windows
+```
+
+### Usuário autorizado aparece como incerto
+
+Ação recomendada:
+
+```txt
+recadastrar com mais ângulos
+retreinar modelo
+validar threshold
+```
+
+### Pessoa desconhecida não vira vermelho
+
+Ação recomendada:
+
+```txt
+validar treinamento
+verificar RECOGNITION_UNKNOWN_THRESHOLD
+realizar teste com pessoa não autorizada
+```
+
+### Bloqueio indevido
+
+Durante calibração:
+
+```env
+UNKNOWN_LOCK_ENABLED=False
+```
+
+Depois validar logs e ajustar treinamento.
+
+### Erro `_reset_unknown_tracking`
+
+Se aparecer:
+
+```txt
+SecurityService object has no attribute _reset_unknown_tracking
+```
+
+Corrigir chamada antiga no `SecurityService` para:
+
+```python
+self._reset_unknown_suspicion("Usuário autorizado reconhecido")
+```
+
+---
+
+## 20. Limitações atuais
+
+- Reconhecimento atual baseado em LBPH.
+- Foco atual em uma estação com um usuário autorizado principal.
+- Modelo ainda não criptografado em repouso.
+- Dados ainda não migrados para ProgramData.
+- ACL institucional ainda não automatizada.
+- Auditoria administrativa ainda não persistida em SQLite.
+- Menu administrativo ainda depende de execução manual autorizada.
+- Homologação LGPD institucional ainda pendente.
+
+---
+
+## 21. Próximas evoluções
+
+### Segurança de dados
+
+```txt
+Mover dados para ProgramData
+Aplicar ACL restrita
+Criptografar modelo com DPAPI
+Apagar modelo puro após criptografia
+```
+
+### Auditoria
+
+```txt
+Criar audit.sqlite
+Registrar ações administrativas
+Registrar recadastro
+Registrar treino
+Registrar exclusão de biometria
+```
+
+### Administração
+
+```txt
+Melhorar menu administrativo
+Criar modo institucional
+Criar documentação de operação
+Criar procedimento de incidente
+```
+
+### Reconhecimento
+
+```txt
+Avaliar migração de LBPH para embeddings faciais
+Melhorar separação autorizado/desconhecido
+Reduzir falsos positivos
+```
+
+---
+
+## 22. Conclusão
+
+O PresenceAgent já possui uma base funcional para uso controlado no MCOM como MVP técnico.
+
+Ele entrega:
+
+```txt
+detecção de presença
+reconhecimento facial local
+startup assistido
+bloqueio contextual
+menu administrativo
+apagamento de imagens brutas
+execução automática local
+```
+
+Para evolução institucional, os próximos passos devem priorizar:
+
+```txt
+proteção de armazenamento
+criptografia
+auditoria
+ACL
+governança LGPD
+documentação operacional formal
+```
+
+Este README deve ser usado como documento inicial de entendimento e operação para a equipe técnica do MCOM.
